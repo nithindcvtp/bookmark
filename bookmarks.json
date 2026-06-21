@@ -6,5 +6,15 @@
     "Learning",
     "Shopping"
   ],
-  "bookmarks": []
+  "bookmarks": [
+    {
+      "id": "6s6pgcbimqo2yudw",
+      "title": "Claude",
+      "url": "https://claude.ai/new",
+      "category": "Work",
+      "notes": "AI",
+      "created": "2026-06-21",
+      "starred": false
+    }
+  ]
 }
