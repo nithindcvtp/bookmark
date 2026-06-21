@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookmark Hub</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Lucide icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     MODAL OVERLAY (shared backdrop)
+═══════════════════════════════════════════════ -->
+<div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true"></div>
+
+<!-- ═══════════════════════════════════════════════
+     ADD / EDIT BOOKMARK MODAL
+═══════════════════════════════════════════════ -->
+<div id="bookmark-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-header">
+    <h2 id="modal-title">Add Bookmark</h2>
+    <button class="btn-icon" id="close-modal" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="modal-body">
+    <input type="hidden" id="edit-id" />
+    <div class="form-group">
+      <label for="bm-title">Title <span class="required">*</span></label>
+      <input type="text" id="bm-title" placeholder="e.g. GitHub" />
+    </div>
+    <div class="form-group">
+      <label for="bm-url">URL <span class="required">*</span></label>
+      <input type="url" id="bm-url" placeholder="https://example.com" />
+    </div>
+    <div class="form-group">
+      <label for="bm-category">Category</label>
+      <select id="bm-category"></select>
+    </div>
+    <div class="form-group">
+      <label for="bm-notes">Notes <span class="optional">(optional)</span></label>
+      <textarea id="bm-notes" rows="3" placeholder="Add a note…"></textarea>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" id="cancel-modal">Cancel</button>
+    <button class="btn btn-primary" id="save-bookmark">Save Bookmark</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     DELETE CONFIRMATION MODAL
+═══════════════════════════════════════════════ -->
+<div id="delete-modal" class="modal modal-sm hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>Delete Bookmark</h2>
+    <button class="btn-icon" id="close-delete-modal" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="modal-body">
+    <p>Are you sure you want to delete <strong id="delete-bm-title"></strong>? This action cannot be undone.</p>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" id="cancel-delete">Cancel</button>
+    <button class="btn btn-danger" id="confirm-delete">Delete</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     CATEGORY MODAL
+═══════════════════════════════════════════════ -->
+<div id="category-modal" class="modal modal-sm hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2 id="cat-modal-title">New Category</h2>
+    <button class="btn-icon" id="close-cat-modal" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="modal-body">
+    <div class="form-group">
+      <label for="cat-name">Category Name <span class="required">*</span></label>
+      <input type="text" id="cat-name" placeholder="e.g. Research" />
+      <input type="hidden" id="cat-old-name" />
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" id="cancel-cat">Cancel</button>
+    <button class="btn btn-primary" id="save-cat">Save</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SETTINGS MODAL
+═══════════════════════════════════════════════ -->
+<div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>GitHub Settings</h2>
+    <button class="btn-icon" id="close-settings-modal" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="modal-body">
+    <div class="settings-warning">
+      <i data-lucide="alert-triangle"></i>
+      <span>Only use a token with a <strong>private</strong> repository. Never expose your token publicly.</span>
+    </div>
+    <div class="form-group">
+      <label for="gh-username">GitHub Username</label>
+      <input type="text" id="gh-username" placeholder="your-username" />
+    </div>
+    <div class="form-group">
+      <label for="gh-repo">Repository Name</label>
+      <input type="text" id="gh-repo" placeholder="bookmark-hub" />
+    </div>
+    <div class="form-group">
+      <label for="gh-branch">Branch</label>
+      <input type="text" id="gh-branch" placeholder="main" value="main" />
+    </div>
+    <div class="form-group">
+      <label for="gh-token">Personal Access Token</label>
+      <div class="input-password-wrap">
+        <input type="password" id="gh-token" placeholder="ghp_••••••••••••••••••••" autocomplete="off" />
+        <button class="btn-icon" id="toggle-token-vis" aria-label="Show/hide token"><i data-lucide="eye"></i></button>
+      </div>
+      <small>Needs <code>repo</code> scope. <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">Create one here ↗</a></small>
+    </div>
+    <div class="settings-actions-row">
+      <button class="btn btn-ghost btn-sm" id="test-connection">
+        <i data-lucide="wifi"></i> Test Connection
+      </button>
+      <span id="connection-status" class="connection-status"></span>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" id="cancel-settings">Cancel</button>
+    <button class="btn btn-primary" id="save-settings">Save Settings</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     IMPORT / EXPORT MODAL
+═══════════════════════════════════════════════ -->
+<div id="import-export-modal" class="modal modal-sm hidden" role="dialog" aria-modal="true">
+  <div class="modal-header">
+    <h2>Import / Export</h2>
+    <button class="btn-icon" id="close-ie-modal" aria-label="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="modal-body">
+    <div class="ie-section">
+      <h3>Export</h3>
+      <p>Download all bookmarks and categories as a JSON file.</p>
+      <button class="btn btn-primary btn-sm" id="export-json"><i data-lucide="download"></i> Export JSON</button>
+    </div>
+    <hr class="modal-divider" />
+    <div class="ie-section">
+      <h3>Import</h3>
+      <p>Import bookmarks from a previously exported JSON file. Existing data will be merged.</p>
+      <label class="btn btn-ghost btn-sm btn-file" for="import-file-input"><i data-lucide="upload"></i> Choose File</label>
+      <input type="file" id="import-file-input" accept=".json" class="hidden" />
+      <span id="import-filename" class="import-filename">No file chosen</span>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" id="cancel-ie">Close</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     TOAST NOTIFICATIONS
+═══════════════════════════════════════════════ -->
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+<!-- ═══════════════════════════════════════════════
+     APP SHELL
+═══════════════════════════════════════════════ -->
+<div class="app-shell">
+
+  <!-- ── TOP NAV ────────────────────────────────── -->
+  <header class="topbar">
+    <button class="btn-icon sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+      <i data-lucide="menu"></i>
+    </button>
+    <div class="brand">
+      <i data-lucide="bookmark" class="brand-icon"></i>
+      <span class="brand-name">Bookmark Hub</span>
+    </div>
+    <div class="search-wrap">
+      <i data-lucide="search" class="search-icon"></i>
+      <input type="search" id="global-search" placeholder="Search bookmarks…" aria-label="Search bookmarks" />
+      <kbd class="search-kbd">Ctrl K</kbd>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" id="open-add-modal">
+        <i data-lucide="plus"></i><span>Add Bookmark</span>
+      </button>
+      <button class="btn-icon theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+        <i data-lucide="moon"></i>
+      </button>
+      <button class="btn-icon" id="open-settings" aria-label="Settings">
+        <i data-lucide="settings"></i>
+      </button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+
+    <!-- ── SIDEBAR ────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-nav">
+        <ul class="nav-list">
+          <li>
+            <button class="nav-item active" data-view="all">
+              <i data-lucide="layout-grid"></i><span>All Bookmarks</span>
+              <span class="nav-badge" id="badge-all">0</span>
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-view="favorites">
+              <i data-lucide="star"></i><span>Favorites</span>
+              <span class="nav-badge" id="badge-fav">0</span>
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-view="recent">
+              <i data-lucide="clock"></i><span>Recently Added</span>
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" data-view="uncategorized">
+              <i data-lucide="folder-open"></i><span>Uncategorized</span>
+            </button>
+          </li>
+        </ul>
+
+        <div class="sidebar-section-header">
+          <span>Folders</span>
+          <button class="btn-icon btn-icon-sm" id="add-category-btn" aria-label="Add category">
+            <i data-lucide="plus"></i>
+          </button>
+        </div>
+        <ul class="nav-list" id="categories-nav"></ul>
+
+        <div class="sidebar-section-header">
+          <span>Tools</span>
+        </div>
+        <ul class="nav-list">
+          <li>
+            <button class="nav-item" id="open-ie-modal">
+              <i data-lucide="arrow-left-right"></i><span>Import / Export</span>
+            </button>
+          </li>
+          <li>
+            <button class="nav-item" id="open-settings-sidebar">
+              <i data-lucide="github"></i><span>GitHub Sync</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- ── MAIN CONTENT ───────────────────────────── -->
+    <main class="content" id="main-content">
+
+      <!-- Content Header -->
+      <div class="content-header">
+        <div>
+          <h1 id="view-title">All Bookmarks</h1>
+          <p id="view-subtitle" class="view-subtitle">0 bookmarks</p>
+        </div>
+        <div class="content-controls">
+          <!-- Sort -->
+          <div class="select-wrap">
+            <i data-lucide="arrow-up-down" class="select-icon"></i>
+            <select id="sort-select" aria-label="Sort by">
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="title-az">Title A–Z</option>
+              <option value="title-za">Title Z–A</option>
+            </select>
+          </div>
+          <!-- Layout toggle -->
+          <div class="layout-toggle">
+            <button class="btn-icon layout-btn active" data-layout="grid" aria-label="Grid view">
+              <i data-lucide="layout-grid"></i>
+            </button>
+            <button class="btn-icon layout-btn" data-layout="list" aria-label="List view">
+              <i data-lucide="list"></i>
+            </button>
+          </div>
+          <!-- Category actions (only shown in category view) -->
+          <div id="cat-actions" class="cat-actions hidden">
+            <button class="btn btn-ghost btn-sm" id="open-all-in-cat">
+              <i data-lucide="external-link"></i> Open All
+            </button>
+            <button class="btn btn-ghost btn-sm" id="rename-cat-btn">
+              <i data-lucide="pencil"></i> Rename
+            </button>
+            <button class="btn btn-danger btn-sm" id="delete-cat-btn">
+              <i data-lucide="trash-2"></i> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bookmark Grid / List -->
+      <div id="bookmarks-container" class="bookmarks-grid"></div>
+
+      <!-- Empty state -->
+      <div id="empty-state" class="empty-state hidden">
+        <i data-lucide="bookmark-x" class="empty-icon"></i>
+        <h3>No bookmarks here</h3>
+        <p id="empty-msg">Add your first bookmark to get started.</p>
+        <button class="btn btn-primary" id="empty-add-btn">
+          <i data-lucide="plus"></i> Add Bookmark
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loading-state" class="loading-state hidden">
+        <div class="spinner"></div>
+        <p>Syncing with GitHub…</p>
+      </div>
+
+    </main>
+  </div><!-- /main-layout -->
+</div><!-- /app-shell -->
+
+<script src="script.js"></script>
+</body>
+</html>
