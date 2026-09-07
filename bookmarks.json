@@ -1,0 +1,20 @@
+{
+  "categories": [
+    "Work",
+    "Personal",
+    "Tools",
+    "Learning",
+    "Shopping"
+  ],
+  "bookmarks": [
+    {
+      "id": "2unpgin4mqo385lv",
+      "title": "CLAUDE",
+      "url": "https://claude.ai/new",
+      "category": "Work",
+      "notes": "AI",
+      "created": "2026-06-21",
+      "starred": false
+    }
+  ]
+}
