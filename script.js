@@ -24,9 +24,12 @@ const state = {
 /* ════════════════════════════════════════════════════════════
    GOOGLE SHEETS CONFIGURATION
 ════════════════════════════════════════════════════════════ */
+const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxgdiqGmEE3lBY7Scl9pf3HLkIAY0SDZ1GfxB6GcMwIn8yjARs-N-aRcBfnDnM54FOzqg/exec';
+const DEFAULT_SHEET_KEY = '0a0a58da-05fa-4c20-95a5-f5e27c72e82e';
+
 const cfg = {
-  get sheetUrl() { return localStorage.getItem('bh-sheet-url') || ''; },
-  get sheetKey() { return localStorage.getItem('bh-sheet-key') || ''; },
+  get sheetUrl() { return localStorage.getItem('bh-sheet-url') || DEFAULT_SHEET_URL; },
+  get sheetKey() { return localStorage.getItem('bh-sheet-key') || DEFAULT_SHEET_KEY; },
 
   save({ sheetUrl, sheetKey }) {
     localStorage.setItem('bh-sheet-url', sheetUrl);
