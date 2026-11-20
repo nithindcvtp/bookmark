@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bookmark Hub</title>
+  <script>
+    try { document.documentElement.setAttribute('data-theme', localStorage.getItem('bh-theme') || 'light'); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css" />
   <!-- Lucide icons via CDN -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -168,7 +171,12 @@
       <i data-lucide="menu"></i>
     </button>
     <div class="brand">
-      <i data-lucide="bookmark" class="brand-icon"></i>
+      <span class="brand-icon-wrap">
+        <i data-lucide="bookmark" class="brand-icon"></i>
+        <span id="sync-badge" class="sync-badge" data-status="" title="">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path class="tick" d="M4 8.5l2.7 2.7L12 5.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path class="cross" d="M5 5l6 6M11 5l-6 6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+      </span>
       <span class="brand-name">Bookmark Hub</span>
     </div>
     <div class="search-wrap">
@@ -177,9 +185,6 @@
       <kbd class="search-kbd">Ctrl K</kbd>
     </div>
     <div class="topbar-actions">
-      <div id="sync-status" class="sync-status hidden" data-status="" title="Google Sheets sync status">
-        <i class="sync-dot"></i><span></span>
-      </div>
       <button class="btn btn-primary" id="open-add-modal">
         <i data-lucide="plus"></i><span>Add Bookmark</span>
       </button>
