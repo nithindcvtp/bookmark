@@ -143,11 +143,10 @@ const local = {
 
 /* Small status indicator in the top bar (never blocks the UI) */
 function setSyncStatus(status, text) {
-  const el = document.getElementById('sync-status');
+  const el = document.getElementById('sync-badge');
   if (!el) return;
-  el.dataset.status = status; // syncing | synced | error | offline | ''
-  el.querySelector('span').textContent = text || '';
-  el.classList.toggle('hidden', !status);
+  el.dataset.status = status; // syncing | synced | error | ''
+  el.title = text || '';
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -231,7 +230,7 @@ async function pushToSheets() {
       await sheetsApi.save();
       if (state.rev === revAtSend) local.dirty = false;
     } while (pushAgain);
-    setSyncStatus('synced', 'Synced');
+    setSyncStatus('synced', 'Synced with Google Sheets');
   } catch (err) {
     console.error('Google Sheets sync failed:', err);
     setSyncStatus('error', 'Sync failed — will retry');
@@ -613,7 +612,7 @@ async function backgroundSync({ firstLoad = false } = {}) {
     if (remoteBms.length === 0 && remoteCats.length === 0) {
       // Sheet is empty — upload whatever we have locally
       if (state.bookmarks.length > 0) await sheetsApi.save();
-      setSyncStatus('synced', 'Synced');
+      setSyncStatus('synced', 'Synced with Google Sheets');
       return;
     }
 
@@ -630,7 +629,7 @@ async function backgroundSync({ firstLoad = false } = {}) {
           !state.categories.includes(state.view)) state.view = 'all';
       render();
     }
-    setSyncStatus('synced', 'Synced');
+    setSyncStatus('synced', 'Synced with Google Sheets');
   } catch (err) {
     console.error('Background sync failed:', err);
     setSyncStatus('error', navigator.onLine ? 'Sync failed' : 'Offline');
@@ -640,7 +639,6 @@ async function backgroundSync({ firstLoad = false } = {}) {
     }
   } finally {
     document.getElementById('loading-state').classList.add('hidden');
-    renderBookmarks();
   }
 }
 
