@@ -177,6 +177,9 @@
       <kbd class="search-kbd">Ctrl K</kbd>
     </div>
     <div class="topbar-actions">
+      <div id="sync-status" class="sync-status hidden" data-status="" title="Google Sheets sync status">
+        <i class="sync-dot"></i><span></span>
+      </div>
       <button class="btn btn-primary" id="open-add-modal">
         <i data-lucide="plus"></i><span>Add Bookmark</span>
       </button>
@@ -305,7 +308,7 @@
       <!-- Loading state -->
       <div id="loading-state" class="loading-state hidden">
         <div class="spinner"></div>
-        <p>Syncing with Google Sheets…</p>
+        <p>Loading your bookmarks…</p>
       </div>
 
     </main>
