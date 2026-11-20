@@ -1,8 +1,11 @@
 /**
  * BOOKMARK HUB — script.js
- * Forces Google Sheets sync on every load and save.
- * Bookmarks are stored in a Google Sheet (via a Google Apps Script
- * Web App backend) and loaded fresh on every page visit from any device.
+ * Local-first with background Google Sheets sync.
+ *  - On load: bookmarks render instantly from the browser cache (localStorage).
+ *  - Then a silent background sync pulls the latest data from Google Sheets
+ *    and updates the page only if something changed.
+ *  - On edit: the change is saved to the browser immediately, then pushed to
+ *    Google Sheets in the background. Unsynced changes are retried next visit.
  */
 
 'use strict';
@@ -18,6 +21,7 @@ const state = {
   sort: 'newest',
   layout: 'grid',
   pendingDeleteId: null,
+  rev: 0, // bumped on every local change so background sync never overwrites newer edits
   theme: localStorage.getItem('bh-theme') || 'light',
 };
 
@@ -117,10 +121,12 @@ const sheetsApi = {
 ════════════════════════════════════════════════════════════ */
 const local = {
   save() {
-    localStorage.setItem('bh-data', JSON.stringify({
-      bookmarks: state.bookmarks,
-      categories: state.categories,
-    }));
+    try {
+      localStorage.setItem('bh-data', JSON.stringify({
+        bookmarks: state.bookmarks,
+        categories: state.categories,
+      }));
+    } catch (e) { console.warn('Could not write local cache:', e); }
   },
   load() {
     try {
@@ -128,7 +134,21 @@ const local = {
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   },
+  // true when local changes have not yet been uploaded to Google Sheets
+  get dirty() { return localStorage.getItem('bh-dirty') === '1'; },
+  set dirty(v) {
+    try { v ? localStorage.setItem('bh-dirty', '1') : localStorage.removeItem('bh-dirty'); } catch {}
+  },
 };
+
+/* Small status indicator in the top bar (never blocks the UI) */
+function setSyncStatus(status, text) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.dataset.status = status; // syncing | synced | error | offline | ''
+  el.querySelector('span').textContent = text || '';
+  el.classList.toggle('hidden', !status);
+}
 
 /* ════════════════════════════════════════════════════════════
    HELPERS
@@ -183,26 +203,41 @@ function escHtml(s) {
 /* ════════════════════════════════════════════════════════════
    PERSIST — always tries Google Sheets first
 ════════════════════════════════════════════════════════════ */
-async function persistData(successMsg = 'Saved.') {
-  local.save(); // always save locally as backup
-
+function persistData(successMsg = 'Saved.') {
+  state.rev++;
+  local.save();      // instant: browser storage
+  local.dirty = true; // remember there is something to upload
   if (!cfg.isConfigured()) {
-    toast('Saved locally only. Configure Google Sheets Settings to sync across devices.', 'info');
+    toast(successMsg + ' (saved in this browser only)', 'info');
     return;
   }
+  toast('✓ ' + successMsg, 'success');
+  pushToSheets(); // background, not awaited
+}
 
-  // Show saving indicator
-  const saveBtn = document.getElementById('save-bookmark');
-  if (saveBtn) { saveBtn.textContent = 'Saving…'; saveBtn.disabled = true; }
-
+/* Push local data to Google Sheets in the background.
+   Only one upload runs at a time; if more edits arrive meanwhile,
+   one extra upload runs afterwards with the latest data. */
+let pushing = false, pushAgain = false;
+async function pushToSheets() {
+  if (!cfg.isConfigured()) return;
+  if (pushing) { pushAgain = true; return; }
+  pushing = true;
+  setSyncStatus('syncing', 'Syncing…');
   try {
-    await sheetsApi.save();
-    toast('✓ ' + successMsg + ' Synced to Google Sheets — visible on all devices!', 'success');
+    do {
+      pushAgain = false;
+      const revAtSend = state.rev;
+      await sheetsApi.save();
+      if (state.rev === revAtSend) local.dirty = false;
+    } while (pushAgain);
+    setSyncStatus('synced', 'Synced');
   } catch (err) {
     console.error('Google Sheets sync failed:', err);
-    toast('⚠ Saved locally but Google Sheets sync FAILED: ' + err.message, 'error');
+    setSyncStatus('error', 'Sync failed — will retry');
+    toast('Saved in this browser. Google Sheets sync failed: ' + err.message, 'error');
   } finally {
-    if (saveBtn) { saveBtn.textContent = 'Save Bookmark'; saveBtn.disabled = false; }
+    pushing = false;
   }
 }
 
@@ -345,7 +380,7 @@ async function saveBookmark() {
 
   closeAllModals();
   render();
-  await persistData(id ? 'Bookmark updated.' : 'Bookmark added.');
+  persistData(id ? 'Bookmark updated.' : 'Bookmark added.');
 }
 
 async function toggleStar(id) {
@@ -353,14 +388,14 @@ async function toggleStar(id) {
   if (!bm) return;
   bm.starred = !bm.starred;
   render();
-  await persistData(bm.starred?'Added to favorites.':'Removed from favorites.');
+  persistData(bm.starred?'Added to favorites.':'Removed from favorites.');
 }
 
 async function deleteBookmark() {
   state.bookmarks = state.bookmarks.filter(b=>b.id!==state.pendingDeleteId);
   closeAllModals();
   render();
-  await persistData('Bookmark deleted.');
+  persistData('Bookmark deleted.');
 }
 
 async function saveCategory() {
@@ -378,7 +413,7 @@ async function saveCategory() {
   }
   closeAllModals();
   render();
-  await persistData(oldName?'Category renamed.':'Category created.');
+  persistData(oldName?'Category renamed.':'Category created.');
 }
 
 async function deleteCategory(name) {
@@ -387,7 +422,7 @@ async function deleteCategory(name) {
   state.bookmarks.forEach(b=>{ if(b.category===name) b.category=''; });
   if (state.view===name) setView('all');
   render();
-  await persistData('Category deleted.');
+  persistData('Category deleted.');
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -471,10 +506,8 @@ function saveSettings() {
 
   cfg.save({ sheetUrl, sheetKey });
   closeAllModals();
-  toast('Settings saved! Reloading data from Google Sheets…','success');
-
-  // Immediately reload from Google Sheets with new settings
-  setTimeout(()=> loadFromSheets(), 500);
+  toast('Settings saved. Syncing in the background…','success');
+  backgroundSync();
 }
 
 async function testConnection() {
@@ -525,7 +558,7 @@ function importJSON(file) {
       if (Array.isArray(data.categories)) data.categories.forEach(c=>{ if(!state.categories.includes(c)) state.categories.push(c); });
       closeAllModals();
       render();
-      await persistData(`Imported ${newBms.length} bookmark(s).`);
+      persistData(`Imported ${newBms.length} bookmark(s).`);
     } catch { toast('Failed to import: invalid JSON.','error'); }
   };
   reader.readAsText(file);
@@ -557,67 +590,95 @@ function toast(msg, type='info') {
 }
 
 /* ════════════════════════════════════════════════════════════
-   LOAD FROM GOOGLE SHEETS (called on startup and after settings save)
+   BACKGROUND SYNC (runs after the page is already showing cached data)
 ════════════════════════════════════════════════════════════ */
-async function loadFromSheets() {
-  const loadingEl = document.getElementById('loading-state');
-  const container = document.getElementById('bookmarks-container');
-  loadingEl.classList.remove('hidden');
-  container.innerHTML='';
+async function backgroundSync({ firstLoad = false } = {}) {
+  if (!cfg.isConfigured()) { setSyncStatus('', ''); return; }
+
+  // Local changes not yet uploaded are newer than the Sheet: upload first.
+  if (local.dirty) { await pushToSheets(); return; }
+
+  setSyncStatus('syncing', 'Syncing…');
+  const revAtStart = state.rev;
 
   try {
     const data = await sheetsApi.load();
-    if (data && (data.bookmarks.length > 0 || data.categories.length > 0)) {
-      state.bookmarks  = data.bookmarks  || [];
-      state.categories = data.categories || state.categories;
-      local.save(); // update local copy
-      toast('✓ Loaded from Google Sheets successfully!','success');
-    } else {
-      // Sheet is empty — upload local data if any
-      const localData = local.load();
-      if (localData && localData.bookmarks && localData.bookmarks.length > 0) {
-        state.bookmarks  = localData.bookmarks;
-        state.categories = localData.categories || state.categories;
-        toast('Sheet is empty. Uploading your local bookmarks now…','info');
-        await sheetsApi.save();
-        toast('✓ Local bookmarks uploaded to Google Sheets!','success');
-      } else {
-        toast('Google Sheets connected! Add your first bookmark.','info');
-      }
-    }
-  } catch(err) {
-    console.error('Google Sheets load error:', err);
-    toast('Google Sheets load failed: ' + err.message + ' — showing local data.','error');
-    const localData = local.load();
-    if (localData) {
-      state.bookmarks  = localData.bookmarks  || [];
-      state.categories = localData.categories || state.categories;
-    }
-  }
+    const remoteBms  = (data && data.bookmarks)  || [];
+    const remoteCats = (data && data.categories) || [];
 
-  render();
+    // User edited while we were fetching — their edit is already being
+    // uploaded, so don't overwrite it with older remote data.
+    if (state.rev !== revAtStart) { setSyncStatus('syncing', 'Syncing…'); return; }
+
+    if (remoteBms.length === 0 && remoteCats.length === 0) {
+      // Sheet is empty — upload whatever we have locally
+      if (state.bookmarks.length > 0) await sheetsApi.save();
+      setSyncStatus('synced', 'Synced');
+      return;
+    }
+
+    const changed =
+      JSON.stringify(remoteBms)  !== JSON.stringify(state.bookmarks) ||
+      JSON.stringify(remoteCats) !== JSON.stringify(state.categories);
+
+    if (changed) {
+      state.bookmarks  = remoteBms;
+      state.categories = remoteCats.length ? remoteCats : state.categories;
+      local.save();
+      // If the open folder no longer exists, fall back to "all"
+      if (!['all','favorites','recent','uncategorized'].includes(state.view) &&
+          !state.categories.includes(state.view)) state.view = 'all';
+      render();
+    }
+    setSyncStatus('synced', 'Synced');
+  } catch (err) {
+    console.error('Background sync failed:', err);
+    setSyncStatus('error', navigator.onLine ? 'Sync failed' : 'Offline');
+    // Only bother the user if there was nothing cached to show
+    if (firstLoad && state.bookmarks.length === 0) {
+      toast('Could not load from Google Sheets: ' + err.message, 'error');
+    }
+  } finally {
+    document.getElementById('loading-state').classList.add('hidden');
+    renderBookmarks();
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
-   INIT
+   INIT — show cached data instantly, then sync quietly
 ════════════════════════════════════════════════════════════ */
-async function init() {
+function init() {
   applyTheme(state.theme);
 
-  if (cfg.isConfigured()) {
-    // Always load fresh from Google Sheets on every page load
-    await loadFromSheets();
-  } else {
-    // Fall back to localStorage and prompt user to configure
-    const localData = local.load();
-    if (localData) {
-      state.bookmarks  = localData.bookmarks  || [];
-      state.categories = localData.categories || state.categories;
-    }
-    render();
-    toast('Configure Google Sheets Settings (⚙) to sync across devices.','info');
+  // 1) Instant: load from browser storage
+  const cached = local.load();
+  const hasCache = !!(cached && ((cached.bookmarks && cached.bookmarks.length) || (cached.categories && cached.categories.length)));
+  if (cached) {
+    state.bookmarks  = cached.bookmarks  || [];
+    state.categories = cached.categories || state.categories;
   }
+
+  if (hasCache || !cfg.isConfigured()) {
+    render();
+  } else {
+    // very first visit on this browser: nothing to show yet, so show the spinner
+    document.getElementById('loading-state').classList.remove('hidden');
+  }
+
+  if (!cfg.isConfigured()) {
+    toast('Configure Google Sheets Settings (⚙) to sync across devices.', 'info');
+    return;
+  }
+
+  // 2) Background: sync with Google Sheets without blocking the page
+  backgroundSync({ firstLoad: true });
 }
+
+// Re-sync quietly when the tab becomes visible again or the connection returns
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && cfg.isConfigured()) backgroundSync();
+});
+window.addEventListener('online', () => { if (cfg.isConfigured()) backgroundSync(); });
 
 /* ════════════════════════════════════════════════════════════
    EVENT WIRING
